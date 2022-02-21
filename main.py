@@ -36,13 +36,14 @@ class Movies(db.Model):
 
 class RateMovieForm(FlaskForm):
     rating = FloatField('Your Rating Out Of 10 e.g. 7.5',
-                        render_kw={"placeholder": "Current: test"})
-    review = StringField('Your Review')
+                        validators=[DataRequired(message="Please enter a number 1-10")])
+    review = StringField('Your Review',
+                         validators=[DataRequired(message="Type your review")])
     submit = SubmitField('Submit')
 
 
 class SearchMovie(FlaskForm):
-    movie_title = StringField('Movie Title')
+    movie_title = StringField('Movie Title', validators=[DataRequired(message="Please enter a valid name")])
     submit = SubmitField('Search')
 
 
@@ -61,14 +62,17 @@ def add_to_db():  # used to add data to database manually
     db.session.add(new_movie)
     db.session.commit()
 
-# add_to_db()
+# add_to_db() # used to add data to database manually
 
 
 # --------------- ROUTES ---------------------
-
 @app.route("/")
 def home():
-    all_movies = db.session.query(Movies).all()
+    all_movies = db.session.query(Movies).order_by(Movies.rating).all()
+    for i in range(len(all_movies)):
+        all_movies[i].ranking = len(all_movies) - i
+    db.session.commit()
+
     return render_template("index.html", movies=all_movies)
 
 
@@ -87,11 +91,9 @@ def add_movie():
     if form.validate_on_submit():
         movie_params = {
             'api_key': MOVIE_API,
-            'query': request.form['movie_title'],
-            'language': 'en_US'
+            'query': request.form['movie_title']
         }
         results = requests.get(url=ENDPOINT, params=movie_params).json()['results']
-        # print(results)
         return render_template("select.html", results=results)
     return render_template("add.html", form=form)
 
@@ -101,23 +103,14 @@ def rate_movie():
     form = RateMovieForm()
     movie_id = request.args.get("id")
     movie = Movies.query.get(movie_id)
-    print(f"Movie received: {movie}")
 
     if form.validate_on_submit():
-    # if request.method == 'POST':
         movie.rating = request.form["rating"]
         movie.review = request.form["review"]
-
-        # UPDATE A PARTICULAR RECORD BY QUERY
-        # book_to_update = Book.query.filter_by(title="Harry Potter").first()
-        # book_to_update.title = "Harry Potter and the Chamber of Secrets"
-        # db.session.commit()
         db.session.commit()
 
         return redirect(url_for('home'))
     return render_template("edit.html", form=form, movie=movie)
-
-
 
 
 @app.route('/find')
@@ -128,33 +121,26 @@ def find():
                                        params=conf_params).json()
         return config_response['images']['secure_base_url']
 
-    # get_base_url()
     movie_params = {'api_key': MOVIE_API, 'language': 'en_US'}
     response = requests.get(url=f"https://api.themoviedb.org/3/movie/{request.args.get('id')}",
                             params=movie_params).json()
-    # print(response)
 
     title = response['title']
     img_url = f"{get_base_url()}w500{response['poster_path']}"
     year = response['release_date'][:4]
     description = response['overview']
     rating = response['vote_average']
-    # # ranking = response[]
-    # # review = response[]
-    # print(description)
+
     new_movie = Movies(
         title=title,
         year=year,
         description=description,
         img_url=img_url,
-        # rating=int(rating),
-        # ranking=0,
         review="",
     )
     db.session.add(new_movie)
     db.session.commit()
     added_movie = Movies.query.filter_by(title=response['title']).first()
-    # print(f"Movie trying to get: {added_movie.id}")
 
     return redirect(url_for('rate_movie', id=added_movie.id))
 
